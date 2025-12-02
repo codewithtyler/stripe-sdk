@@ -10,7 +10,6 @@ import type {
   CheckoutSession,
   SubscriptionOptions,
   Subscription,
-  SubscriptionState,
   CustomerData,
   Customer,
   WebhookEvent,
@@ -18,7 +17,7 @@ import type {
   KVAdapter,
   SyncAdapter,
 } from './types';
-import { PaymentError, WebhookError, ErrorCodes } from './errors';
+import { PaymentError, WebhookError, ConfigError, ErrorCodes } from './errors';
 import { loadStripeConfig, validateWebhookSecret, type StripeConfig } from './config';
 
 /**
@@ -62,9 +61,10 @@ export function createStripeProvider(
   const config = loadStripeConfig(options.config);
   const { cache, sync } = options;
 
-  // Initialize Stripe client
+  // Initialize Stripe client with latest API version
+  // TypeScript will ensure we use a valid LatestApiVersion
   const stripe = new Stripe(config.secretKey, {
-    apiVersion: '2024-11-20.acacia',
+    apiVersion: '2025-02-24.acacia' as Stripe.LatestApiVersion,
     typescript: true,
   });
 
@@ -97,6 +97,7 @@ export function createStripeProvider(
         if (options.mode === 'subscription' && options.trialDays) {
           sessionParams.subscription_data = {
             trial_period_days: options.trialDays,
+            metadata: options.metadata, // Store metadata on subscription (e.g., userId)
           };
         }
 
@@ -106,7 +107,10 @@ export function createStripeProvider(
           id: session.id,
           url: session.url!,
           status: (session.status ?? 'open') as 'open' | 'complete' | 'expired',
-          customerId: typeof session.customer === 'string' ? session.customer : undefined,
+          customerId:
+            typeof session.customer === 'string'
+              ? session.customer
+              : session.customer?.id,
           metadata: session.metadata ?? undefined,
           createdAt: new Date(session.created * 1000),
         };
@@ -137,7 +141,7 @@ export function createStripeProvider(
           items: [
             {
               price: options.priceId,
-              quantity: options.quantity,
+              quantity: options.quantity ?? 1,
             },
           ],
           metadata: options.metadata,
@@ -151,7 +155,10 @@ export function createStripeProvider(
 
         const subscriptionData: Subscription = {
           id: subscription.id,
-          customerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
+          customerId:
+            typeof subscription.customer === 'string'
+              ? subscription.customer
+              : subscription.customer?.id ?? '',
           status: subscription.status as Subscription['status'],
           currentPeriodEnd: new Date(subscription.current_period_end * 1000),
           currentPeriodStart: new Date(subscription.current_period_start * 1000),
@@ -238,7 +245,18 @@ export function createStripeProvider(
     },
 
     verifyWebhook(payload: string, signature: string): WebhookEvent {
-      validateWebhookSecret(config, true);
+      // Validate webhook secret and convert ConfigError to WebhookError to match interface contract
+      try {
+        validateWebhookSecret(config, true);
+      } catch (error) {
+        if (error instanceof ConfigError) {
+          throw new WebhookError(
+            error.message,
+            ErrorCodes.WEBHOOK_SIGNATURE_INVALID
+          );
+        }
+        throw error;
+      }
 
       try {
         const event = stripe.webhooks.constructEvent(
@@ -275,7 +293,7 @@ export function createStripeProvider(
         });
 
         return {
-          url: session.url,
+          url: session.url!,
         };
       } catch (error) {
         if (error instanceof Stripe.errors.StripeError) {
