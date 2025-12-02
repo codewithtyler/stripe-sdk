@@ -1,0 +1,24 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# top-most EditorConfig file
+root = true
+
+# All files
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+trim_trailing_whitespace = true
+
+# TypeScript/JavaScript files
+[*.{ts,tsx,js,jsx}]
+indent_style = space
+indent_size = 2
+max_line_length = 120
+quote_type = single
+spaces_around_operators = true
+spaces_around_brackets = false
+curly_bracket_next_line = false
+indent_brace_style = K&R
+continuation_indent_size = 2
+spaces_around_commas = true
