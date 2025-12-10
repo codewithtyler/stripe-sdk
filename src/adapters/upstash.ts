@@ -5,6 +5,7 @@
  */
 
 import type { KVAdapter } from '../core/types';
+import { Redis } from '@upstash/redis';
 
 /**
  * Configuration options for Upstash adapter.
@@ -37,29 +38,9 @@ export interface UpstashAdapterConfig {
 export function createUpstashAdapter(
   config: UpstashAdapterConfig
 ): KVAdapter {
-  // Dynamic import to avoid requiring @upstash/redis as a peer dependency
-  // This allows the memory adapter to work without any external deps
-  let RedisClass: new (config: { url: string; token: string }) => {
-    get(key: string): Promise<unknown>;
-    set(key: string, value: string, options?: { ex?: number }): Promise<string>;
-    del(key: string): Promise<number>;
-  };
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const upstashRedis = require('@upstash/redis');
-    RedisClass = upstashRedis.Redis;
-  } catch (error) {
-    throw new Error(
-      '@upstash/redis package is required for Upstash adapter. Install it with: npm install @upstash/redis'
-    );
-  }
-
-  if (!RedisClass) {
-    throw new Error('Failed to import @upstash/redis');
-  }
-
-  const redis = new RedisClass({
+  // Use ES module import - Upstash supports it and it's much easier to mock than require()
+  // This is a top-level import which Vitest can easily intercept with vi.mock()
+  const redis = new Redis({
     url: config.url,
     token: config.token,
   });
